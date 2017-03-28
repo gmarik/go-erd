@@ -7,7 +7,9 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"log"
+	"net/http"
 	"os"
 )
 
@@ -28,7 +30,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	dotRender(os.Stdout, inspectDir(*path))
+	http.HandleFunc("/graph", func(w http.ResponseWriter, r *http.Request) {
+		var dot bytes.Buffer
+		dotRender(&dot, inspectDir(*path))
+		w.Header().Set("content-type", "text/plain")
+		w.Write(dot.Bytes())
+	})
+	http.Handle("/", http.FileServer(http.Dir("examples/d3")))
+	http.ListenAndServe(":8001", nil)
+
 }
 
 type NamedType struct {
@@ -36,7 +46,7 @@ type NamedType struct {
 	Type ast.Expr
 }
 
-func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
+func dotRender(out io.Writer, pkgTypes map[string]map[string]NamedType) {
 
 	fmt.Fprintf(out, "digraph %q { \n", "GoERD")
 	var buf bytes.Buffer
