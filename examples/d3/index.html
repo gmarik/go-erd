@@ -1,0 +1,49 @@
+<html>
+
+    <head>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.4.11/d3.min.js"></script>
+        <script src="https://github.com/mdaines/viz.js/releases/download/v1.7.1/viz.js"></script>
+        <style>
+         svg {
+             overflow: hidden;
+         }
+         .node rect {
+             stroke: #333;
+             stroke-width: 1.5px;
+             fill: #fff;
+         }
+         .edgeLabel rect {
+             fill: #fff;
+         }
+         .edgePath {
+             stroke: #333;
+             stroke-width: 1.5px;
+             fill: none;
+         }
+        </style>
+
+    </head>
+    <body>
+        <script>
+         window.onload = function() {
+             var svg = d3.select("body")
+                         .append("svg")
+                         .attr("width", "100%")
+                         .attr("height", "100%")
+                         .call(d3.behavior.zoom().on("zoom", function () {
+                             svg.attr("transform", "translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale + ")")
+                         }))
+                         .append("g");
+             fetch('/graph')
+                 .then(function(response) {
+                     return response.text();
+                 })
+                 .then(function(str) {
+                     var g = Viz(str, {format: "svg"});
+                     svg.html(g);
+                 });
+         }
+        </script>
+    </body>
+
+</html>
