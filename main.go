@@ -20,7 +20,8 @@ import (
 func main() {
 
 	var (
-		path = flag.String("path", "", "path parse")
+		path     = flag.String("path", "", "path parse")
+		hostport = flag.String("http", "", "Host:port for web server")
 	)
 
 	flag.Parse()
@@ -30,15 +31,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *hostport != "" {
+		webServe(*hostport, *path)
+	} else {
+		dotRender(os.Stdout, inspectDir(*path))
+	}
+}
+
+func webServe(hp, path string) {
 	http.HandleFunc("/graph", func(w http.ResponseWriter, r *http.Request) {
 		var dot bytes.Buffer
-		dotRender(&dot, inspectDir(*path))
+		dotRender(&dot, inspectDir(path))
 		w.Header().Set("content-type", "text/plain")
 		w.Write(dot.Bytes())
 	})
 	http.Handle("/", http.FileServer(http.Dir("examples/d3")))
-	http.ListenAndServe(":8001", nil)
-
+	http.ListenAndServe(hp, nil)
 }
 
 type NamedType struct {
