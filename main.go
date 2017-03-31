@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"log"
 	"os"
+	"strings"
 )
 
 //
@@ -16,7 +17,6 @@ import (
 //
 // running: go run ./cmd/goerd/main.go -path cmd/traverse/|dot -Tsvg > out.svg
 func main() {
-
 	var (
 		path = flag.String("path", "", "path parse")
 	)
@@ -31,14 +31,14 @@ func main() {
 	dotRender(os.Stdout, inspectDir(*path))
 }
 
-type NamedType struct {
-	Id   *ast.Ident
-	Type ast.Expr
+type namedType struct {
+	Ident *ast.Ident
+	Type  ast.Expr
 }
 
-func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
-
+func dotRender(out *os.File, pkgTypes map[string]map[string]namedType) {
 	fmt.Fprintf(out, "digraph %q { \n", "GoERD")
+
 	var buf bytes.Buffer
 	for pkg, types := range pkgTypes {
 
@@ -47,31 +47,31 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 
 		// Nodes
 		var i int
-		for _, snode := range types {
+		for _, typ := range types {
 			i++
 			buf.Reset()
 
-			switch t := snode.Type.(type) {
+			switch t := typ.Type.(type) {
 			case *ast.Ident:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), t.Name)
-				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, t.Name)
+				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.SelectorExpr:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), typeName(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.ChanType:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), typeName(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=box,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=box,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.FuncType:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), typeName(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.ArrayType:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), typeName(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.MapType:
-				var label = fmt.Sprintf(`%s\ %s`, typeName(snode.Id), typeName(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typeName(snode.Id), label)
+				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
 			case *ast.InterfaceType:
-				fmt.Fprintf(&buf, `{%s\ interface|`, snode.Id.Name)
+				fmt.Fprintf(&buf, `{%s\ interface|`, typ.Ident.Name)
 				for i, f := range t.Methods.List {
 					if i > 0 {
 						fmt.Fprintf(&buf, `|`)
@@ -87,12 +87,12 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 					if len(f.Names) > 0 {
 						fmt.Fprintf(&buf, `\ `)
 					}
-					fmt.Fprintf(&buf, `%s`, typeName(f.Type))
+					fmt.Fprintf(&buf, `%s`, toString(f.Type))
 				}
 				fmt.Fprintf(&buf, `}`)
-				fmt.Fprintf(out, " \"node-%s\" [shape=Mrecord,label=\"%s\"];\n", typeName(snode.Id), buf.String())
+				fmt.Fprintf(out, " \"node-%s\" [shape=Mrecord,label=\"%s\"];\n", typ.Ident.Name, buf.String())
 			case *ast.StructType:
-				fmt.Fprintf(&buf, `{%s|`, snode.Id.Name)
+				fmt.Fprintf(&buf, `{%s|`, typ.Ident.Name)
 				for i, f := range t.Fields.List {
 					if i > 0 {
 						fmt.Fprintf(&buf, "|")
@@ -108,30 +108,30 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 					if len(f.Names) > 0 {
 						fmt.Fprintf(&buf, `\ `)
 					}
-					fmt.Fprintf(&buf, `%s`, typeName(f.Type))
+					fmt.Fprintf(&buf, `%s`, toString(f.Type))
 				}
 				fmt.Fprintf(&buf, `}`)
-				fmt.Fprintf(out, " \"node-%s\" [shape=record,label=\"%s\"];\n", typeName(snode.Id), buf.String())
+				fmt.Fprintf(out, " \"node-%s\" [shape=record,label=\"%s\"];\n", typ.Ident.Name, buf.String())
 			default:
-				fmt.Fprintf(os.Stderr, "MISSED: %s: %#v\n ", typeName(t), snode)
+				fmt.Fprintf(os.Stderr, "MISSED: %s: %#v\n ", toString(t), typ)
 			}
 		}
 
 		// Edges
-		for _, snode := range types {
-			switch t := snode.Type.(type) {
+		for _, ptype := range types {
+			switch t := ptype.Type.(type) {
 			// TODO: exhaustive switch
 			case *ast.FuncType:
-				for i, typ := range dependants(t) {
-					var from = fmt.Sprintf(`"node-%s":f%d`, snode.Id, i)
+				for i, typ := range dependsOn(t) {
+					var from = fmt.Sprintf(`"node-%s":f%d`, ptype.Ident.Name, i)
 					var to = fmt.Sprintf("node-%s", typ)
 					if _, ok := types[typ]; ok {
 						fmt.Fprintf(out, "%s -> %q;\n", from, to)
 					}
 				}
 			case *ast.ChanType:
-				for i, typ := range dependants(t) {
-					var from = fmt.Sprintf(`"node-%s":f%d`, snode.Id, i)
+				for i, typ := range dependsOn(t) {
+					var from = fmt.Sprintf(`"node-%s":f%d`, ptype.Ident.Name, i)
 					var to = fmt.Sprintf("node-%s", typ)
 					if _, ok := types[typ]; ok {
 						fmt.Fprintf(out, "%s -> %q;\n", from, to)
@@ -139,8 +139,8 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 				}
 			case *ast.InterfaceType:
 				for i, f := range t.Methods.List {
-					var from = fmt.Sprintf(`"node-%s":f%d`, snode.Id.Name, i)
-					for _, typ := range dependants(f.Type) {
+					var from = fmt.Sprintf(`"node-%s":f%d`, ptype.Ident.Name, i)
+					for _, typ := range dependsOn(f.Type) {
 						var to = fmt.Sprintf("node-%s", typ)
 						if _, ok := types[typ]; ok {
 							fmt.Fprintf(out, "%s -> %q;\n", from, to)
@@ -149,8 +149,8 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 				}
 			case *ast.StructType:
 				for i, f := range t.Fields.List {
-					var from = fmt.Sprintf(`"node-%s":f%d`, snode.Id.Name, i)
-					for _, typ := range dependants(f.Type) {
+					var from = fmt.Sprintf(`"node-%s":f%d`, ptype.Ident.Name, i)
+					for _, typ := range dependsOn(f.Type) {
 						var to = fmt.Sprintf("node-%s", typ)
 						if _, ok := types[typ]; ok {
 							fmt.Fprintf(out, "%s -> %q;\n", from, to)
@@ -165,33 +165,35 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]NamedType) {
 	fmt.Fprintf(out, "}\n\n")
 }
 
-func inspectDir(path string) map[string]map[string]NamedType {
+func inspectDir(path string) map[string]map[string]namedType {
 	var (
 		fset        = token.NewFileSet()
 		filter      = func(n os.FileInfo) bool { return true }
 		pkgmap, err = parser.ParseDir(fset, path, filter, 0)
 
-		types = make(map[string]map[string]NamedType)
+		types = make(map[string]map[string]namedType)
 	)
 
 	if err != nil {
-		log.Fatal("parser error:", err) // parse error
+		log.Fatal("parser error:", err)
 	}
 
 	for pkgName, pkg := range pkgmap {
-		types[pkgName] = make(map[string]NamedType)
+		types[pkgName] = make(map[string]namedType)
 
 		for fname, f := range pkg.Files {
 			fmt.Fprintln(os.Stderr, "File:", fname)
 
 			ast.Inspect(f, func(n ast.Node) bool {
 				switch nodeType := n.(type) {
+				// skip comments
+				case *ast.CommentGroup, *ast.Comment:
+					return false
 				case *ast.TypeSpec:
-					types[pkgName][nodeType.Name.Name] = NamedType{
-						Id:   nodeType.Name,
-						Type: nodeType.Type,
+					types[pkgName][nodeType.Name.Name] = namedType{
+						Ident: nodeType.Name,
+						Type:  nodeType.Type,
 					}
-
 					return false
 				}
 
@@ -207,33 +209,33 @@ func inspectDir(path string) map[string]map[string]NamedType {
 	return types
 }
 
-func typeName(n interface{}) string {
+func toString(n interface{}) string {
 	switch t := n.(type) {
 	case nil:
 		return "nil"
 	case *ast.Ident:
 		return t.Name
 	case *ast.SelectorExpr:
-		return typeName(t.X) + "." + typeName(t.Sel)
+		return toString(t.X) + "." + toString(t.Sel)
 	case *ast.Object:
 		return t.Name
 	case *ast.StarExpr:
-		return `\*` + typeName(t.X)
+		return `\*` + toString(t.X)
 	case *ast.InterfaceType:
 		// TODO:
 		return `interface\{\}`
 	case *ast.MapType:
-		return `map\[` + typeName(t.Key) + `\]` + typeName(t.Value)
+		return `map\[` + toString(t.Key) + `\]` + toString(t.Value)
 	case *ast.ChanType:
-		return `chan\ ` + typeName(t.Value)
+		return `chan\ ` + toString(t.Value)
 	case *ast.StructType:
 		// TODO:
-		return `struct\ \{\}` //+ typeName(t.)
+		return `struct\ \{\}` //+ toString(t.)
 	case *ast.Ellipsis:
-		return `\.\.\.` + typeName(t.Elt)
+		return `\.\.\.` + toString(t.Elt)
 	case *ast.Field:
 		// ignoring names
-		return typeName(t.Type)
+		return toString(t.Type)
 
 	case *ast.FuncType:
 		var buf bytes.Buffer
@@ -243,7 +245,7 @@ func typeName(n interface{}) string {
 				if i > 0 {
 					fmt.Fprintf(&buf, `\,`)
 				}
-				fmt.Fprintf(&buf, "%s", typeName(p))
+				fmt.Fprintf(&buf, "%s", toString(p))
 			}
 		}
 		fmt.Fprintf(&buf, `\)`)
@@ -254,52 +256,51 @@ func typeName(n interface{}) string {
 				if i > 0 {
 					fmt.Fprintf(&buf, `\,`)
 				}
-				fmt.Fprintf(&buf, "%s", typeName(r))
+				fmt.Fprintf(&buf, "%s", toString(r))
 			}
 			fmt.Fprintf(&buf, `\)`)
 		}
 
 		return buf.String()
 	case *ast.ArrayType:
-		return `\[\]` + typeName(t.Elt)
+		return `\[\]` + toString(t.Elt)
 	default:
 		return fmt.Sprintf("%#v", n)
 	}
 }
 
-// collect all the types node n dependants on
-func dependants(n interface{}) []string {
+// collect all the type names node n depends on
+func dependsOn(n interface{}) []string {
 	switch t := n.(type) {
 	case nil:
 		return nil
 	case *ast.Ident:
 		return []string{t.Name}
 	case *ast.SelectorExpr:
-		// TODO: why t.X is an expression?
-		return []string{typeName(t.X) + "." + t.Sel.Name}
+		return []string{toString(t.X) + "." + t.Sel.Name}
 	case *ast.Object:
 		return []string{t.Name}
 	case *ast.Field:
-		return dependants(t.Type)
+		return dependsOn(t.Type)
 	case *ast.StarExpr:
-		return dependants(t.X)
+		return dependsOn(t.X)
 	case *ast.MapType:
-		return append(dependants(t.Key), dependants(t.Value)...)
+		return append(dependsOn(t.Key), dependsOn(t.Value)...)
 	case *ast.ChanType:
-		return dependants(t.Value)
+		return dependsOn(t.Value)
 	case *ast.InterfaceType:
 		if t.Methods == nil {
 			return nil
 		}
 		var types []string
 		for _, v := range t.Methods.List {
-			types = append(types, dependants(v.Type)...)
+			types = append(types, dependsOn(v.Type)...)
 		}
 		return types
 	case *ast.StructType:
 		var types []string
 		for _, v := range t.Fields.List {
-			types = append(types, dependants(v.Type)...)
+			types = append(types, dependsOn(v.Type)...)
 		}
 		return types
 	case *ast.FuncType:
@@ -307,20 +308,20 @@ func dependants(n interface{}) []string {
 
 		if t.Params != nil {
 			for _, v := range t.Params.List {
-				types = append(types, dependants(v.Type)...)
+				types = append(types, dependsOn(v.Type)...)
 			}
 		}
 
 		if t.Results != nil {
 			for _, v := range t.Results.List {
-				types = append(types, dependants(v.Type)...)
+				types = append(types, dependsOn(v.Type)...)
 			}
 		}
 
 		return types
 
 	case *ast.ArrayType:
-		return dependants(t.Elt)
+		return dependsOn(t.Elt)
 	default:
 		return []string{fmt.Sprintf("%#v", n)}
 	}
