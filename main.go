@@ -53,25 +53,25 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]namedType) {
 
 			switch t := typ.Type.(type) {
 			case *ast.Ident:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, t.Name)
-				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, t.Name)
+				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.SelectorExpr:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=ellipse,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.ChanType:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=box,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=box,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.FuncType:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.ArrayType:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.MapType:
-				var label = fmt.Sprintf(`%s\ %s`, typ.Ident.Name, toString(t))
-				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, label)
+				var label = fmt.Sprintf(`%s %s`, typ.Ident.Name, toString(t))
+				fmt.Fprintf(out, " \"node-%s\" [shape=rectangle,label=\"%s\"];\n", typ.Ident.Name, escape(label))
 			case *ast.InterfaceType:
-				fmt.Fprintf(&buf, `{%s\ interface|`, typ.Ident.Name)
+				fmt.Fprintf(&buf, `%s interface|`, typ.Ident.Name)
 				for i, f := range t.Methods.List {
 					if i > 0 {
 						fmt.Fprintf(&buf, `|`)
@@ -81,18 +81,17 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]namedType) {
 					for ii, n := range f.Names {
 						fmt.Fprintf(&buf, "%s", n.Name)
 						if ii > 0 {
-							fmt.Fprintf(&buf, `\,`)
+							fmt.Fprintf(&buf, `,`)
 						}
 					}
 					if len(f.Names) > 0 {
-						fmt.Fprintf(&buf, `\ `)
+						fmt.Fprintf(&buf, ` `)
 					}
 					fmt.Fprintf(&buf, `%s`, toString(f.Type))
 				}
-				fmt.Fprintf(&buf, `}`)
-				fmt.Fprintf(out, " \"node-%s\" [shape=Mrecord,label=\"%s\"];\n", typ.Ident.Name, buf.String())
+				fmt.Fprintf(out, " \"node-%s\" [shape=Mrecord,label=\"{%s}\"];\n", typ.Ident.Name, escape(buf.String()))
 			case *ast.StructType:
-				fmt.Fprintf(&buf, `{%s|`, typ.Ident.Name)
+				fmt.Fprintf(&buf, `%s|`, typ.Ident.Name)
 				for i, f := range t.Fields.List {
 					if i > 0 {
 						fmt.Fprintf(&buf, "|")
@@ -101,17 +100,16 @@ func dotRender(out *os.File, pkgTypes map[string]map[string]namedType) {
 
 					for ii, n := range f.Names {
 						if ii > 0 {
-							fmt.Fprintf(&buf, `\,\ `)
+							fmt.Fprintf(&buf, `, `)
 						}
 						fmt.Fprintf(&buf, `%s`, n.Name)
 					}
 					if len(f.Names) > 0 {
-						fmt.Fprintf(&buf, `\ `)
+						fmt.Fprintf(&buf, ` `)
 					}
 					fmt.Fprintf(&buf, `%s`, toString(f.Type))
 				}
-				fmt.Fprintf(&buf, `}`)
-				fmt.Fprintf(out, " \"node-%s\" [shape=record,label=\"%s\"];\n", typ.Ident.Name, buf.String())
+				fmt.Fprintf(out, " \"node-%s\" [shape=record,label=\"{%s}\"];\n", typ.Ident.Name, escape(buf.String()))
 			default:
 				fmt.Fprintf(os.Stderr, "MISSED: %s: %#v\n ", toString(t), typ)
 			}
@@ -209,6 +207,14 @@ func inspectDir(path string) map[string]map[string]namedType {
 	return types
 }
 
+func escape(s string) string {
+	for _, ch := range " '`[]{}()*" {
+		s = strings.Replace(s, string(ch), `\`+string(ch), -1)
+	}
+
+	return s
+}
+
 func toString(n interface{}) string {
 	switch t := n.(type) {
 	case nil:
@@ -220,50 +226,50 @@ func toString(n interface{}) string {
 	case *ast.Object:
 		return t.Name
 	case *ast.StarExpr:
-		return `\*` + toString(t.X)
+		return `*` + toString(t.X)
 	case *ast.InterfaceType:
 		// TODO:
-		return `interface\{\}`
+		return `interface{}`
 	case *ast.MapType:
-		return `map\[` + toString(t.Key) + `\]` + toString(t.Value)
+		return `map[` + toString(t.Key) + `]` + toString(t.Value)
 	case *ast.ChanType:
-		return `chan\ ` + toString(t.Value)
+		return `chan ` + toString(t.Value)
 	case *ast.StructType:
 		// TODO:
-		return `struct\ \{\}` //+ toString(t.)
+		return `struct {}` //+ toString(t.)
 	case *ast.Ellipsis:
-		return `\.\.\.` + toString(t.Elt)
+		return `...` + toString(t.Elt)
 	case *ast.Field:
 		// ignoring names
 		return toString(t.Type)
 
 	case *ast.FuncType:
 		var buf bytes.Buffer
-		fmt.Fprintf(&buf, `func\(`)
+		fmt.Fprint(&buf, `func(`)
 		if t.Params != nil && len(t.Params.List) > 0 {
 			for i, p := range t.Params.List {
 				if i > 0 {
-					fmt.Fprintf(&buf, `\,`)
+					fmt.Fprint(&buf, `, `)
 				}
-				fmt.Fprintf(&buf, "%s", toString(p))
+				fmt.Fprint(&buf, toString(p))
 			}
 		}
-		fmt.Fprintf(&buf, `\)`)
+		fmt.Fprint(&buf, `)`)
 
 		if t.Results != nil && len(t.Results.List) > 0 {
-			fmt.Fprintf(&buf, `\ \(`)
+			fmt.Fprint(&buf, ` (`)
 			for i, r := range t.Results.List {
 				if i > 0 {
-					fmt.Fprintf(&buf, `\,`)
+					fmt.Fprint(&buf, `, `)
 				}
-				fmt.Fprintf(&buf, "%s", toString(r))
+				fmt.Fprint(&buf, toString(r))
 			}
-			fmt.Fprintf(&buf, `\)`)
+			fmt.Fprint(&buf, `)`)
 		}
 
 		return buf.String()
 	case *ast.ArrayType:
-		return `\[\]` + toString(t.Elt)
+		return `[]` + toString(t.Elt)
 	default:
 		return fmt.Sprintf("%#v", n)
 	}
